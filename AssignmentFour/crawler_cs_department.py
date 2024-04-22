@@ -2,10 +2,43 @@ from urllib.error import HTTPError, URLError
 from bs4 import BeautifulSoup
 import re
 from urllib.request import urlopen
-import queue
+from MongoDB import *
 
 
-def scrape():
+def scrape(db, url):
+    global name, title, office, phone, email, web
+    html = urlopen(url)
+    soup = BeautifulSoup(html.read(), 'html.parser')
+    professor_info = soup.find_all('div', class_='clearfix')
+    for professor in professor_info:
+        name_element = professor.find('h2')
+        if name_element:
+            name = name_element.text.strip()
+        title_element = professor.find('strong', string=re.compile("Title"))
+        if title_element:
+            title = title_element.next_sibling.strip()
+        office_element = professor.find('strong', string=re.compile("Office"))
+        if office_element:
+            office = office_element.next_sibling.strip()
+        phone_element = professor.find('strong', string=re.compile("Phone"))
+        if phone_element:
+            phone = phone_element.next_sibling.strip()
+        email_element = professor.find('a', href=lambda href: href and href.startswith('mailto:'))
+        if email_element:
+            email = email_element['href'].replace('mailto:', '')
+        web_element = professor.find('a', href=lambda href: href and 'http' in href)
+        if web_element:
+            web = web_element['href']
+        professor_doc = {
+            "name": name,
+            "title": title,
+            "office": office,
+            "phone": phone,
+            "email": email,
+            "website": web
+        }
+        createDocument(db, professor_doc)
+
     return
 
 
@@ -33,7 +66,8 @@ def crawl(seed_url):
             # If title is not Permanent Faculty, the program will continue.
             if soup.find('title', string=re.compile("Permanent Faculty")):
                 print("faculty page found:", current_url)
-                return
+                frontier.clear()
+                return current_url
             # Searches through the HTML of the currentURL and grabs any URL that matches the tag of 'href'
             frontier_elements = soup.select("a[href]")
             # Iterates through the elements that matched the criteria of previous statement.
@@ -62,7 +96,11 @@ def crawl(seed_url):
 def main():
     # Given a seed URL, the main function will call 'crawl' to start searching for the target: Permanent Faculty
     seed_url = "https://www.cpp.edu/sci/computer-science/ "
-    crawl(seed_url)
+    url_want = crawl(seed_url)
+    db = connectionDataBase()
+    collection_name = "Professors"
+    collection = db[collection_name]
+    scrape(collection, url_want )
 
 
 if __name__ == "__main__":
